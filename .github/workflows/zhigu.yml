@@ -1,0 +1,18 @@
+name: Zhigu Check
+on: [push, pull_request]
+permissions:
+  contents: read
+jobs:
+  test:
+    defaults:
+      run:
+        working-directory: zhigu
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+      - run: node --check server.mjs
+      - run: node --check public/app.js
+      - run: npm test
