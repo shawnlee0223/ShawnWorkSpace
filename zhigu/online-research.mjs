@@ -6,8 +6,8 @@ export function verifiedSources(response,at){
  function visit(x){if(!x||typeof x!=='object')return;if(x.type==='url_citation'){const url=safeUrl(x.url||x.url_citation?.url);if(url)found.set(url,{label:String(x.title||x.url_citation?.title||url),url,asOf:null,fetchedAt:at});}for(const v of Object.values(x))if(v&&typeof v==='object'){if(Array.isArray(v))v.forEach(visit);else visit(v);}}
  visit(response.output);return [...found.values()];
 }
-export function decodeOnlineReport(response,asset,at=new Date().toISOString()){
- const s={asset,fetchedAt:at,sources:verifiedSources(response,at),missing:[],errors:[],quote:null,fundamentals:null,news:[],analysis:null,status:'insufficient',mode:'web',model:response.model,usage:response.usage||null};
+export function decodeOnlineReport(response,asset,at=new Date().toISOString(),retrievedSources=null){
+ const s={asset,fetchedAt:at,sources:retrievedSources||verifiedSources(response,at),missing:[],errors:[],quote:null,fundamentals:null,news:[],analysis:null,status:'insufficient',mode:'web',model:response.model,usage:response.usage||null};
  const text=(response.output||[]).filter(x=>x.type==='message').flatMap(x=>x.content||[]).filter(x=>x.type==='output_text').map(x=>x.text||'').join('\n');
  s.webText=text;
  if(!s.sources.length){s.errors.push('联网响应没有返回可验证的来源引用；未采信其中的价格或分类。');return s;}

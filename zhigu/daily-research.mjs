@@ -1,3 +1,4 @@
+import { collectBrave } from './brave-research.mjs';
 import { collectOnline } from './online-research.mjs';
 import { readFileSync, writeFileSync, existsSync } from 'node:fs';
 import { join } from 'node:path';
@@ -45,14 +46,14 @@ export function createDailyResearch(db,dataDir,{fetcher=fetch}={}){
  db.prepare("UPDATE research_runs SET status='interrupted',finished=? WHERE status='running'").run(stamp());
  const settings=()=>JSON.parse(db.prepare('SELECT payload FROM research_settings WHERE id=1').get().payload);
  let running=false,lastRunAt=0;
- function connections(){const c=cfg();return {model:!!c.ARK_API_KEY&&!!c.ARK_MODEL_ID,modelName:c.ARK_MODEL_ID||'',globalMarket:!!c.EODHD_API_KEY,crypto:!!c.COINGECKO_API_KEY,legacyMarket:!!c.TUSHARE_TOKEN};}
+ function connections(){const c=cfg();return {model:!!c.ARK_API_KEY&&!!c.ARK_MODEL_ID,modelName:c.ARK_MODEL_ID||'',brave:!!c.BRAVE_API_KEY,globalMarket:!!c.EODHD_API_KEY,crypto:!!c.COINGECKO_API_KEY,legacyMarket:!!c.TUSHARE_TOKEN};}
  function saveConnections(b){
-  for(const key of ['ARK_API_KEY','ARK_MODEL_ID','EODHD_API_KEY','COINGECKO_API_KEY']){
+  for(const key of ['ARK_API_KEY','ARK_MODEL_ID','EODHD_API_KEY','COINGECKO_API_KEY','BRAVE_API_KEY']){
    if(b[key]!==undefined){if(typeof b[key]!=='string'||b[key].length>4096||/[\r\n\0]/.test(b[key]))throw Error('连接参数无效');if(b[key].trim())secrets[key]=b[key].trim();}
   }
   writeFileSync(connectionFile,JSON.stringify(secrets),{mode:0o600});return connections();
  }
- function saveSettings(b){const s=settings();if(typeof b.enabled!=='boolean'||!/^([01]\d|2[0-3]):[0-5]\d$/.test(b.time))throw Error('定时设置无效');if(b.mode!==undefined&&!['provider','web'].includes(b.mode))throw Error('定时设置无效');s.enabled=b.enabled;s.time=b.time;s.mode=b.mode||s.mode||'provider';db.prepare('UPDATE research_settings SET payload=? WHERE id=1').run(JSON.stringify(s));return s;}
+ function saveSettings(b){const s=settings();if(typeof b.enabled!=='boolean'||!/^([01]\d|2[0-3]):[0-5]\d$/.test(b.time))throw Error('定时设置无效');if(b.mode!==undefined&&!['provider','web','brave'].includes(b.mode))throw Error('定时设置无效');s.enabled=b.enabled;s.time=b.time;s.mode=b.mode||s.mode||'provider';db.prepare('UPDATE research_settings SET payload=? WHERE id=1').run(JSON.stringify(s));return s;}
  async function json(url,headers={}){const response=await fetcher(url,{headers,signal:AbortSignal.timeout(25000)});if(!response.ok)throw Error('服务返回 HTTP '+response.status+'，请检查权限、额度或网络');const b=await response.text();if(b.length>10000000)throw Error('数据响应过大');try{return JSON.parse(b);}catch{throw Error('数据服务返回格式无效');}}
  async function eod(path,params={}){const key=cfg().EODHD_API_KEY;if(!key)throw Error('未配置 EODHD API Key（港股/A股/美股/ETF）');const u=new URL('https://eodhd.com/api/'+path);for(const [k,v]of Object.entries({api_token:key,fmt:'json',...params}))u.searchParams.set(k,v);const d=await json(u);if(d?.error||d?.message||d?.code)throw Error('数据源未返回有效数据，请核对标的覆盖及套餐权限');return d;}
  function summary(){const rows=db.prepare('SELECT * FROM research_runs ORDER BY started DESC LIMIT 30').all();return {settings:settings(),connections:connections(),running,runs:rows.map(({payload,...r})=>({...r,count:JSON.parse(payload).assets?.length||0})),latest:rows[0]?{...rows[0],payload:JSON.parse(rows[0].payload)}:null};}
@@ -93,7 +94,7 @@ export function createDailyResearch(db,dataDir,{fetcher=fetch}={}){
  async function execute(id){
   const payload={assets:[],portfolio:{text:'未提供真实持仓权重、成本和风险承受能力。组合层面仅提供集中度、币种、行业与情景检查，不生成个性化仓位百分比。',checks:['阿里/小米/地平线/小马/SpaceX等科技成长风险可能共振，应按实际权重计算集中度。','SOXX与科技持仓可能有产业链重叠，ETF不等于整个组合已分散。','ETH/SOL高波动且全天交易；股票休市期间也应关注组合流动性。','港币、人民币、美元与加密资产报价需统一币种后再计算真实组合风险。']}};
   const persist=()=>db.prepare('UPDATE research_runs SET payload=? WHERE id=?').run(JSON.stringify(payload),id);
-  try{for(const asset of settings().assets){const s=settings().mode==='web'?await collectOnline(asset,cfg(),{fetcher}):await collect(asset);if(settings().mode!=='web')await analyze(s);payload.assets.push(s);persist();}
+  try{for(const asset of settings().assets){const s=settings().mode==='brave'?await collectBrave(asset,cfg(),{fetcher}):settings().mode==='web'?await collectOnline(asset,cfg(),{fetcher}):await collect(asset);if(!['web','brave'].includes(settings().mode))await analyze(s);payload.assets.push(s);persist();}
    const count=payload.assets.filter(x=>x.analysis).length;const status=count===payload.assets.length?'completed':payload.assets.some(x=>x.quote)?'partial':'blocked';db.prepare('UPDATE research_runs SET status=?,finished=?,payload=? WHERE id=?').run(status,stamp(),JSON.stringify(payload),id);
   }catch{payload.error='任务意外中断，请查看连接状态后重试';db.prepare("UPDATE research_runs SET status='failed',finished=?,payload=? WHERE id=?").run(stamp(),JSON.stringify(payload),id);}finally{running=false;}
  }
@@ -102,6 +103,6 @@ export function createDailyResearch(db,dataDir,{fetcher=fetch}={}){
   if(Date.now()-lastRunAt<60000)throw Error('请至少间隔一分钟再运行，避免重复消耗接口额度');
   const id=crypto.randomUUID();running=true;lastRunAt=Date.now();db.prepare('INSERT INTO research_runs(id,started,status,payload) VALUES(?,?,?,?)').run(id,stamp(),'running',JSON.stringify({assets:[],trigger}));void execute(id);return {id,running:true};
  }
- const timer=setInterval(()=>{const s=settings(),c=connections();if(running||(s.mode==='web'?!c.model:(!c.globalMarket&&!c.crypto)))return;const latest=db.prepare('SELECT started FROM research_runs ORDER BY started DESC LIMIT 1').get();if(dueToday(new Date(),s,latest?day(new Date(latest.started)):null)){try{start('scheduled');}catch{}}},60000);timer.unref();
+ const timer=setInterval(()=>{const s=settings(),c=connections();if(running||(s.mode==='brave'?(!c.model||!c.brave):s.mode==='web'?!c.model:(!c.globalMarket&&!c.crypto)))return;const latest=db.prepare('SELECT started FROM research_runs ORDER BY started DESC LIMIT 1').get();if(dueToday(new Date(),s,latest?day(new Date(latest.started)):null)){try{start('scheduled');}catch{}}},60000);timer.unref();
  return {summary,start,getRun,connections,saveConnections,saveSettings,config:cfg,stop:()=>clearInterval(timer)};
 }

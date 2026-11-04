@@ -110,3 +110,8 @@ docker compose logs --tail=100 app
 新增 `online-research.mjs`，每日计划可选 `web` 模式，使用现有lite密钥调用方舟Responses API内置web_search（仅search_engine，最多2轮、每轮2个关键词）。该模式需要单独开通联网内容插件，有独立计费；未替用户开通，默认仍为provider模式。未与独立行情源交叉核验，不能把搜索整理视为准确行情终端。
 
 价格必须有正数、匹配币种、近7天日期以及API返回的实际url_citation来源；只有模型文本中出现的URL不采信。分类至少需要有效价格、两个有API引用来源的事实与两个不同来源URL；不足保留原始资料整理和待核实。网页引用存在不保证源文事实或模型摘录正确，仍需回查原文。原始联网响应正文、引用及使用量会随日报保存。数据源未覆盖的链上/资金流/ETF申赎继续明确标缺失。
+
+### 使用已有 Brave Search API（用户选择）
+网页新增BRAVE_API_KEY密码框，保存方式与方舟密钥相同，仅服务端600权限。每日计划选择brave模式：每个标的2次Brave Web Search（count6、extra_snippets=true；新闻freshness=pw），串行并间隔1.1秒，完整13标的最多26次搜索；有搜索结果才调用lite，每标的最多1次。费用与限流按已有Brave套餐执行；未替用户注册或订阅。API文档：https://api-dashboard.search.brave.com/api-reference/web/search/get 。
+
+Brave实际返回的http/https结果链接构成可引用范围，模型自造链接不能成为有效事实或报价来源。检索内容为搜索摘要和额外摘录，不等于已读取全文。行情日期需来自摘录本身，不把采集日当报价日期。资料不足时生成待核实的研究整理。该模式不调用方舟联网插件，不需要其新增订阅，也不要求EODHD密钥。尚需用用户真实Brave Key核对网络、权限、搜索返回及首份日报；密钥已配置不代表连接通过。
