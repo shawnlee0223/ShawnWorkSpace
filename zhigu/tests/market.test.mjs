@@ -26,7 +26,7 @@ test('行情失败保持缺失；没有检索Key时仍保留独立行情，不�
 test('前复权日K校验映射、排序去重，排除当日及错误OHLC，不猜测复权字段',()=>{
  const rows=[['2026-11-05','10','11','12','9','100'],['2026-11-04','10','11','12','9','100'],['2026-11-03','10','10','12','9','100'],['2026-11-02','10','11','9','8','100']];
  const r=parseTencentHistory({code:0,data:{hk09988:{qfqday:rows}}},hk,at);assert.deepEqual(r.map(x=>x.date),['2026-11-03','2026-11-04']);assert.equal(r.at(-1).adjusted_close,11);
- assert.throws(()=>parseTencentHistory({code:0,data:{hk09988:{day:rows}}},hk,at));assert.throws(()=>parseTencentHistory({code:0,data:{hk00700:{qfqday:rows}}},hk,at));
+ const unadjusted=parseTencentHistory({code:0,data:{hk09988:{day:rows}}},hk,at);assert.equal(unadjusted[0].priceBasis,'unadjusted');assert.equal(unadjusted[0].adjusted_close,undefined);assert.throws(()=>parseTencentHistory({code:0,data:{hk00700:{qfqday:rows}}},hk,at));
 });
 test('OKX UTC日线只使用已完成的日K，排除未完成及未来条目',()=>{
  const ts=Date.parse('2026-11-04T00:00:00Z'),r=[String(ts),'10','12','9','11','100','100','1100','1'];

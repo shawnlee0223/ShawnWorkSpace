@@ -32,13 +32,14 @@ export async function collectMarket(asset,{fetcher=fetch}={}){
 }
 
 export function parseTencentHistory(d,asset,at=new Date().toISOString()){
- const symbol=tencentSymbol(asset),data=d?.data?.[symbol];if(d?.code!==0||!Array.isArray(data?.qfqday))throw Error('未返回请求的前复权日K，不使用未复权数据替代');
+ const symbol=tencentSymbol(asset),data=d?.data?.[symbol];if(d?.code!==0||(!Array.isArray(data?.qfqday)&&!Array.isArray(data?.day)))throw Error('未返回该标的日K');
+ const adjusted=Array.isArray(data.qfqday),series=adjusted?data.qfqday:data.day;
  const zone=asset.code.endsWith('.US')?'America/New_York':'Asia/Shanghai';
  // Exclude the current exchange date even after market close: never treat an unfinished/delayed bar as final.
  const today=new Intl.DateTimeFormat('en-CA',{timeZone:zone,year:'numeric',month:'2-digit',day:'2-digit'}).format(new Date(at));
- const rows=new Map();for(const r of data.qfqday){if(!Array.isArray(r)||!/^\d{4}-\d{2}-\d{2}$/.test(r[0])||r[0]>=today)continue;
+ const rows=new Map();for(const r of series){if(!Array.isArray(r)||!/^\d{4}-\d{2}-\d{2}$/.test(r[0])||r[0]>=today)continue;
  const [date,o,c,h,l,v]=r,nums=[o,c,h,l].map(number);if(nums.some(n=>n===null||n<=0)||nums[2]<Math.max(nums[0],nums[1],nums[3])||nums[3]>Math.min(nums[0],nums[1]))continue;
- rows.set(date,{date,open:nums[0],close:nums[1],adjusted_close:nums[1],high:nums[2],low:nums[3],volume:number(v)});}
+ rows.set(date,{date,open:nums[0],close:nums[1],...(adjusted?{adjusted_close:nums[1]}:{}),priceBasis:adjusted?'forward-adjusted':'unadjusted',high:nums[2],low:nums[3],volume:number(v)});}
  const result=[...rows.values()].sort((a,b)=>a.date.localeCompare(b.date));if(!result.length)throw Error('没有完整历史日K');if(Date.parse(today)-Date.parse(result.at(-1).date)>10*86400000)throw Error('日K末日过旧');return result;
 }
 export function parseOKXCandles(d,asset,at=new Date().toISOString()){
@@ -52,7 +53,8 @@ async function collectHistory(s,{fetcher}){
  if(asset.kind==='crypto')url='https://www.okx.com/api/v5/market/candles?instId='+asset.code.split('.')[0]+'-USDT&bar=1Dutc&limit=100';
  else if(asset.code.endsWith('.US')){s.missing.push('美股/ETF复权日K尚未接入；不使用A股或港股接口猜测美股历史。');return;}
  else url='https://web.ifzq.gtimg.cn/appstock/app/'+(asset.code.endsWith('.HK')?'hkfqkline':'fqkline')+'/get?param='+tencentSymbol(asset)+',day,,,120,qfq';
- try{const r=await fetcher(url,{signal:AbortSignal.timeout(12000)});if(!r.ok)throw Error('HTTP '+r.status);const d=await r.json();s.rows=asset.kind==='crypto'?parseOKXCandles(d,asset,at):parseTencentHistory(d,asset,at);s.technicals=technicals(s.rows,asset.kind==='crypto'?365:252);s.technicals.method+='；仅完整历史日K，股票排除交易所当日行，腾讯为前复权；OKX为UTC日线，不含未完成K线';
- s.sources.push({label:asset.kind==='crypto'?'OKX完整UTC日K':'腾讯财经前复权日K（排除当日）',url,asOf:s.rows.at(-1).date,fetchedAt:at});
+ try{const r=await fetcher(url,{signal:AbortSignal.timeout(12000)});if(!r.ok)throw Error('HTTP '+r.status);const d=await r.json();s.rows=asset.kind==='crypto'?parseOKXCandles(d,asset,at):parseTencentHistory(d,asset,at);s.technicals=technicals(s.rows,asset.kind==='crypto'?365:252);s.technicals.method+='；仅完整历史日K，股票排除交易所当日行，腾讯按返回字段标注复权口径；OKX为UTC日线，不含未完成K线';
+ if(asset.kind!=='crypto'&&s.rows[0].priceBasis==='unadjusted'){s.technicals.method+='；该标的仅返回普通未复权日K，除权除息可能导致价格跳变，收益与波动需谨慎解读';s.missing.push('供应商未返回前复权列，当前历史明确为未复权，不作为总回报指标。');}
+ s.sources.push({label:asset.kind==='crypto'?'OKX完整UTC日K':s.rows[0].priceBasis==='unadjusted'?'腾讯普通未复权日K（排除当日）':'腾讯财经前复权日K（排除当日）',url,asOf:s.rows.at(-1).date,fetchedAt:at});
  }catch(e){s.missing.push('历史日K：'+(e.message==='fetch failed'||e.name==='TimeoutError'?'连接失败或超时':e.message));}
 }
