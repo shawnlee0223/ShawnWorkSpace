@@ -1,5 +1,6 @@
+import { technicals } from './price-technicals.mjs';
 const number=v=>v!==''&&v!=null&&Number.isFinite(Number(v))?Number(v):null;
-export function tencentSymbol(a){if(a.code.endsWith('.HK'))return 'hk'+a.code.split('.')[0].padStart(5,'0');if(a.code.endsWith('.SZ'))return 'sz'+a.code.split('.')[0];if(a.code.endsWith('.US'))return 'us'+a.code.split('.')[0];throw Error('腾讯标的映射缺失');}
+export function tencentSymbol(a){if(a.code.endsWith('.HK'))return 'hk'+a.code.split('.')[0].padStart(5,'0');if(a.code.endsWith('.SH'))return 'sh'+a.code.split('.')[0];if(a.code.endsWith('.SZ'))return 'sz'+a.code.split('.')[0];if(a.code.endsWith('.US'))return 'us'+a.code.split('.')[0];throw Error('腾讯标的映射缺失');}
 function localStamp(raw,zone){
  const digits=raw.replace(/\D/g,'');if(!/^\d{14}$/.test(digits))throw Error('行情时间无效');
  const parts=digits.match(/^(\d{4})(\d{2})(\d{2})(\d{2})(\d{2})(\d{2})$/).slice(1).map(Number);
@@ -26,5 +27,32 @@ export async function collectMarket(asset,{fetcher=fetch}={}){
  s.quote=asset.kind==='crypto'?parseOKX(await r.json(),asset,at):parseTencent(new TextDecoder('gb18030').decode(await r.arrayBuffer()),asset,at);
  s.sources.push({label:s.quote.provider+' 行情快照',url:s.quote.sourceUrl,asOf:s.quote.asOf,fetchedAt:at});
  }catch(e){s.errors.push((asset.kind==='crypto'?'OKX':'腾讯财经')+'行情：'+(e.name==='TimeoutError'||e.message==='fetch failed'?'连接失败或超时':e.message));}
- s.missing.push('行情快照不含完整财务报表、历史波动率、相对强弱或资金流；基本面与新闻通过Brave检索核验。');if(asset.kind==='crypto')s.missing.push('OKX交易所行情不提供链上活跃地址、TVL、代币解锁或全市场资金流。');return s;
+ await collectHistory(s,{fetcher});
+ s.missing.push('行情与日K不含完整财务报表、相对基准强弱或资金流；基本面与新闻通过Brave检索核验。');if(asset.kind==='crypto')s.missing.push('OKX交易所行情不提供链上活跃地址、TVL、代币解锁或全市场资金流。');return s;
+}
+
+export function parseTencentHistory(d,asset,at=new Date().toISOString()){
+ const symbol=tencentSymbol(asset),data=d?.data?.[symbol];if(d?.code!==0||!Array.isArray(data?.qfqday))throw Error('未返回请求的前复权日K，不使用未复权数据替代');
+ const zone=asset.code.endsWith('.US')?'America/New_York':'Asia/Shanghai';
+ // Exclude the current exchange date even after market close: never treat an unfinished/delayed bar as final.
+ const today=new Intl.DateTimeFormat('en-CA',{timeZone:zone,year:'numeric',month:'2-digit',day:'2-digit'}).format(new Date(at));
+ const rows=new Map();for(const r of data.qfqday){if(!Array.isArray(r)||!/^\d{4}-\d{2}-\d{2}$/.test(r[0])||r[0]>=today)continue;
+ const [date,o,c,h,l,v]=r,nums=[o,c,h,l].map(number);if(nums.some(n=>n===null||n<=0)||nums[2]<Math.max(nums[0],nums[1],nums[3])||nums[3]>Math.min(nums[0],nums[1]))continue;
+ rows.set(date,{date,open:nums[0],close:nums[1],adjusted_close:nums[1],high:nums[2],low:nums[3],volume:number(v)});}
+ const result=[...rows.values()].sort((a,b)=>a.date.localeCompare(b.date));if(!result.length)throw Error('没有完整历史日K');if(Date.parse(today)-Date.parse(result.at(-1).date)>10*86400000)throw Error('日K末日过旧');return result;
+}
+export function parseOKXCandles(d,asset,at=new Date().toISOString()){
+ if(d?.code!=='0'||!Array.isArray(d.data))throw Error('OKX日K返回错误');const rows=new Map();
+ for(const r of d.data){if(!Array.isArray(r)||r[8]!=='1')continue;const t=number(r[0]),nums=r.slice(1,5).map(number);if(!t||t>=Date.parse(at)||t+86400000>Date.parse(at)||nums.some(x=>x===null||x<=0)||nums[1]<Math.max(nums[0],nums[2],nums[3])||nums[2]>Math.min(nums[0],nums[3]))continue;
+ const date=new Date(t).toISOString().slice(0,10);rows.set(date,{date,open:nums[0],high:nums[1],low:nums[2],close:nums[3],volume:number(r[5]),turnover:number(r[7])});}
+ const result=[...rows.values()].sort((a,b)=>a.date.localeCompare(b.date));if(!result.length||Date.parse(at)-Date.parse(result.at(-1).date)>3*86400000)throw Error('OKX完整日K缺失或过旧');return result;
+}
+async function collectHistory(s,{fetcher}){
+ const {asset,fetchedAt:at}=s;let url;
+ if(asset.kind==='crypto')url='https://www.okx.com/api/v5/market/candles?instId='+asset.code.split('.')[0]+'-USDT&bar=1Dutc&limit=100';
+ else if(asset.code.endsWith('.US')){s.missing.push('美股/ETF复权日K尚未接入；不使用A股或港股接口猜测美股历史。');return;}
+ else url='https://web.ifzq.gtimg.cn/appstock/app/'+(asset.code.endsWith('.HK')?'hkfqkline':'fqkline')+'/get?param='+tencentSymbol(asset)+',day,,,120,qfq';
+ try{const r=await fetcher(url,{signal:AbortSignal.timeout(12000)});if(!r.ok)throw Error('HTTP '+r.status);const d=await r.json();s.rows=asset.kind==='crypto'?parseOKXCandles(d,asset,at):parseTencentHistory(d,asset,at);s.technicals=technicals(s.rows,asset.kind==='crypto'?365:252);s.technicals.method+='；仅完整历史日K，股票排除交易所当日行，腾讯为前复权；OKX为UTC日线，不含未完成K线';
+ s.sources.push({label:asset.kind==='crypto'?'OKX完整UTC日K':'腾讯财经前复权日K（排除当日）',url,asOf:s.rows.at(-1).date,fetchedAt:at});
+ }catch(e){s.missing.push('历史日K：'+(e.message==='fetch failed'||e.name==='TimeoutError'?'连接失败或超时':e.message));}
 }

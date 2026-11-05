@@ -14,7 +14,7 @@ export async function collectBrave(asset,c,{fetcher=fetch}={}){
  const market=await collectMarket(asset,{fetcher});
  const base={asset,fetchedAt:at,quote:null,fundamentals:null,news:[],sources:[],analysis:null,status:'unavailable',mode:'brave',missing:[],errors};
  errors.push(...market.errors);
- Object.assign(base,{quote:market.quote,sources:market.sources,missing:market.missing,errors,status:market.quote?'partial':'unavailable'});
+ Object.assign(base,{quote:market.quote,sources:market.sources,rows:market.rows,technicals:market.technicals,missing:market.missing,errors,status:market.quote?'partial':'unavailable'});
  if(!c.BRAVE_API_KEY){base.errors.push('尚未配置 Brave Search API Key');return base;}
  if(!c.ARK_API_KEY||!c.ARK_MODEL_ID){base.errors.push('尚未配置火山方舟模型');return base;}
  const focus=asset.kind==='crypto'?'on-chain active addresses fees TVL token supply unlock staking':asset.kind==='etf'?'holdings expense ratio net fund flows semiconductor industry':'quarterly results revenue free cash flow valuation';
@@ -36,6 +36,6 @@ export async function collectBrave(asset,c,{fetcher=fetch}={}){
   try{const parsed=JSON.parse(text.trim().replace(/^```(?:json)?\s*/,'').replace(/\s*```$/,''));parsed.quote=market.quote?{...market.quote,url:market.quote.sourceUrl}:null;text=JSON.stringify(parsed);}catch{}
   const reportAsset=market.quote?.currency?{...asset,currency:market.quote.currency}:asset;
   const s=decodeOnlineReport({model:d.model,status:d.choices?.[0]?.finish_reason==='stop'?'completed':'incomplete',usage:d.usage,output:[{type:'message',content:[{type:'output_text',text}]}]},reportAsset,at,base.sources);
-  s.asset=asset;s.quote=market.quote;s.errors.push(...market.errors);s.missing.push(...market.missing);s.mode='brave';s.errors.push(...errors);s.queries=queries;s.searchRequests=2;s.missing.push('行情来自腾讯财经或OKX；基本面依据Brave搜索摘要与摘录，尚未逐页核对全文。');return s;
+  s.asset=asset;s.quote=market.quote;s.rows=market.rows;s.technicals=market.technicals;s.missing.push(...market.missing);s.mode='brave';s.errors.push(...errors);s.queries=queries;s.searchRequests=2;s.missing.push('行情来自腾讯财经或OKX；基本面依据Brave搜索摘要与摘录，尚未逐页核对全文。');return s;
  }catch{errors.push('模型分析连接失败或响应格式无效');return base;}
 }
