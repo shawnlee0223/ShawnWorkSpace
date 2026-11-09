@@ -1,3 +1,12 @@
+export function parseReportJSON(text){
+ const clean=String(text).trim().replace(/^```(?:json)?\s*/,'').replace(/\s*```$/,'');
+ let firstError;
+ for(let extra=0;extra<=3;extra++){
+  if(extra&&!/^}+$/.test(clean.slice(-extra)))break;
+  try{const value=JSON.parse(extra?clean.slice(0,-extra):clean);if(!value||typeof value!=='object'||Array.isArray(value))throw Error('报告必须是JSON对象');return {value,recovered:extra>0};}catch(e){if(!extra)firstError=e;}
+ }
+ throw firstError;
+}
 const categories=['谨慎持有','继续持有观察','值得分批加仓'];
 const safeUrl=s=>{try{const u=new URL(s);return ['http:','https:'].includes(u.protocol)?u.href:null;}catch{return null;}};
 export function verifiedSources(response,at){
@@ -11,7 +20,7 @@ export function decodeOnlineReport(response,asset,at=new Date().toISOString(),re
  const text=(response.output||[]).filter(x=>x.type==='message').flatMap(x=>x.content||[]).filter(x=>x.type==='output_text').map(x=>x.text||'').join('\n');
  s.webText=text;
  if(!s.sources.length){s.errors.push('联网响应没有返回可验证的来源引用；未采信其中的价格或分类。');return s;}
- let d;try{d=JSON.parse(text.trim().replace(/^```(?:json)?\s*/,'').replace(/\s*```$/,''));}catch{s.errors.push('已检索到资料，但模型未返回规定格式；保留原文供核验。');return s;}
+ let d;try{const parsed=parseReportJSON(text);d=parsed.value;if(parsed.recovered)s.missing.push('模型JSON末尾有多余闭合符，已仅移除多余闭合符；原文保留供核验。');}catch{s.errors.push('已检索到资料，但模型未返回规定格式；保留原文供核验。');return s;}
  const urls=new Set(s.sources.map(x=>x.url));
  const facts=Array.isArray(d.facts)?d.facts.filter(f=>typeof f.text==='string'&&urls.has(safeUrl(f.url))).slice(0,20).map(f=>({text:f.text.slice(0,1600),url:safeUrl(f.url),asOf:typeof f.asOf==='string'?f.asOf:null})):[];
  s.fundamentals={facts};
