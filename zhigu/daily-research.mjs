@@ -1,3 +1,4 @@
+import { reportPeriod } from './report-period.mjs';
 import { technicals } from './price-technicals.mjs';
 export { technicals } from './price-technicals.mjs';
 import { collectBrave } from './brave-research.mjs';
@@ -10,11 +11,10 @@ export const DEFAULT_ASSETS=[
  {code:'300274.SZ',name:'阳光电源',market:'A股',currency:'CNY',provider:'300274.SHE',kind:'stock'},
  {code:'9660.HK',name:'地平线机器人',market:'港股',currency:'HKD',provider:'9660.HK',kind:'stock'},
  {code:'9911.HK',name:'赤子城科技',market:'港股',currency:'HKD',provider:'9911.HK',kind:'stock'},
- {code:'2026.HK',name:'小马智行',market:'港股',currency:'HKD',provider:'2026.HK',kind:'stock'},
+ {code:'PONY.US',name:'小马智行',market:'美股',currency:'USD',provider:'PONY.US',kind:'stock'},
  {code:'2269.HK',name:'药明生物',market:'港股',currency:'HKD',provider:'2269.HK',kind:'stock'},
  {code:'2367.HK',name:'巨子生物',market:'港股',currency:'HKD',provider:'2367.HK',kind:'stock'},
  {code:'LUNR.US',name:'Intuitive Machines',market:'美股',currency:'USD',provider:'LUNR.US',kind:'stock'},
- {code:'SPCX.US',name:'SpaceX',market:'美股',currency:'USD',provider:'SPCX.US',kind:'stock'},
  {code:'SOXX.US',name:'半导体 ETF · SOXX',market:'美股ETF',currency:'USD',provider:'SOXX.US',kind:'etf'},
  {code:'ETH.CRYPTO',name:'Ethereum',market:'加密资产',currency:'USD',provider:'ethereum',kind:'crypto'},
  {code:'SOL.CRYPTO',name:'Solana',market:'加密资产',currency:'USD',provider:'solana',kind:'crypto'}
@@ -83,17 +83,19 @@ export function createDailyResearch(db,dataDir,{fetcher=fetch}={}){
  }
  function getRun(id){const r=db.prepare('SELECT * FROM research_runs WHERE id=?').get(id);return r?{...r,payload:JSON.parse(r.payload)}:null;}
  async function execute(id){
-  const payload={assets:[],portfolio:{text:'未提供真实持仓权重、成本和风险承受能力。组合层面仅提供集中度、币种、行业与情景检查，不生成个性化仓位百分比。',checks:['阿里/小米/地平线/小马/SpaceX等科技成长风险可能共振，应按实际权重计算集中度。','SOXX与科技持仓可能有产业链重叠，ETF不等于整个组合已分散。','ETH/SOL高波动且全天交易；股票休市期间也应关注组合流动性。','港币、人民币、美元与加密资产报价需统一币种后再计算真实组合风险。']}};
+  const payload={...getRun(id).payload,assets:[],portfolio:{text:'未提供真实持仓权重、成本和风险承受能力。组合层面仅提供集中度、币种、行业与情景检查，不生成个性化仓位百分比。',checks:['阿里/小米/地平线/小马等科技成长风险可能共振，应按实际权重计算集中度。','SOXX与科技持仓可能有产业链重叠，ETF不等于整个组合已分散。','ETH/SOL高波动且全天交易；股票休市期间也应关注组合流动性。','港币、人民币、美元与加密资产报价需统一币种后再计算真实组合风险。']}};
+  const reused=payload.reuseRunId?getRun(payload.reuseRunId)?.payload?.assets||[]:[];
   const persist=()=>db.prepare('UPDATE research_runs SET payload=? WHERE id=?').run(JSON.stringify(payload),id);
-  try{for(const asset of settings().assets){const s=settings().mode==='brave'?await collectBrave(asset,cfg(),{fetcher}):settings().mode==='web'?await collectOnline(asset,cfg(),{fetcher}):await collect(asset);if(!['web','brave'].includes(settings().mode))await analyze(s);payload.assets.push(s);persist();}
+  try{for(const asset of settings().assets){const prior=reused.find(x=>x.asset.code===asset.code&&x.analysis);const s=prior?{...prior,reusedFromRunId:payload.reuseRunId}:settings().mode==='brave'?await collectBrave(asset,cfg(),{fetcher,period:payload.reportPeriod}):settings().mode==='web'?await collectOnline(asset,cfg(),{fetcher}):await collect(asset);if(!prior&&!['web','brave'].includes(settings().mode))await analyze(s);payload.assets.push(s);persist();}
    const count=payload.assets.filter(x=>x.analysis).length;const status=count===payload.assets.length?'completed':payload.assets.some(x=>x.quote)?'partial':'blocked';db.prepare('UPDATE research_runs SET status=?,finished=?,payload=? WHERE id=?').run(status,stamp(),JSON.stringify(payload),id);
   }catch{payload.error='任务意外中断，请查看连接状态后重试';db.prepare("UPDATE research_runs SET status='failed',finished=?,payload=? WHERE id=?").run(stamp(),JSON.stringify(payload),id);}finally{running=false;}
  }
  function start(trigger='manual'){
   if(running)return {id:db.prepare("SELECT id FROM research_runs WHERE status='running' ORDER BY started DESC LIMIT 1").get()?.id,running:true};
   if(Date.now()-lastRunAt<60000)throw Error('请至少间隔一分钟再运行，避免重复消耗接口额度');
-  const id=crypto.randomUUID();running=true;lastRunAt=Date.now();db.prepare('INSERT INTO research_runs(id,started,status,payload) VALUES(?,?,?,?)').run(id,stamp(),'running',JSON.stringify({assets:[],trigger}));void execute(id);return {id,running:true};
+  const previous=db.prepare("SELECT * FROM research_runs WHERE status='completed' ORDER BY started DESC LIMIT 1").get();const oldAssets=previous?JSON.parse(previous.payload).assets:[];const codes=a=>a.map(x=>x.asset?.code||x.code).sort().join(',');const reuseRunId=trigger==='manual'&&previous&&day(new Date(previous.started))===day(new Date())&&codes(oldAssets)!==codes(settings().assets)?previous.id:null;
+  const id=crypto.randomUUID();running=true;lastRunAt=Date.now();db.prepare('INSERT INTO research_runs(id,started,status,payload) VALUES(?,?,?,?)').run(id,stamp(),'running',JSON.stringify({assets:[],trigger,reuseRunId,reportPeriod:reportPeriod(trigger)}));void execute(id);return {id,running:true};
  }
- const timer=setInterval(()=>{const s=settings(),c=connections();if(running||(s.mode==='brave'?(!c.model||!c.brave):s.mode==='web'?!c.model:(!c.globalMarket&&!c.crypto)))return;const latest=db.prepare('SELECT started FROM research_runs ORDER BY started DESC LIMIT 1').get();if(dueToday(new Date(),s,latest?day(new Date(latest.started)):null)){try{start('scheduled');}catch{}}},60000);timer.unref();
+ const timer=setInterval(()=>{const s=settings(),c=connections();if((s.effectiveFrom&&day(new Date())<s.effectiveFrom)||running||(s.mode==='brave'?(!c.model||!c.brave):s.mode==='web'?!c.model:(!c.globalMarket&&!c.crypto)))return;const latest=db.prepare("SELECT started FROM research_runs WHERE json_extract(payload, '$.trigger')='scheduled' ORDER BY started DESC LIMIT 1").get();if(dueToday(new Date(),s,latest?day(new Date(latest.started)):null)){try{start('scheduled');}catch{}}},60000);timer.unref();
  return {summary,start,getRun,connections,saveConnections,saveSettings,config:cfg,stop:()=>clearInterval(timer)};
 }

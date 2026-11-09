@@ -14,7 +14,7 @@ export function parseTencent(text,asset,at=new Date().toISOString()){
  const expected=asset.code.split('.')[0],actual=String(f[2]||'').split('.')[0];if(actual!==expected&&!(asset.code.endsWith('.HK')&&Number(actual)===Number(expected)))throw Error('腾讯返回标的代码不匹配');
  const price=number(f[3]);if(!price||price<=0)throw Error('腾讯价格无效');
  const us=asset.code.endsWith('.US'),asOf=localStamp(f[30],us?'America/New_York':'Asia/Shanghai');const age=Date.parse(at)-Date.parse(asOf);if(age < -300000||age>7*86400000)throw Error('腾讯行情超出有效时限');
- return {price,currency:asset.currency,asOf,change1d:number(f[32]),sourceUrl:'https://qt.gtimg.cn/q='+symbol,provider:'腾讯财经',method:'腾讯财经最新可得快照，可能延迟；美股按纽约时间转换，港股/A股按北京时间转换。成交量与资金流不等同。'};
+ return {price,previousClose:number(f[4]),currency:asset.currency,asOf,change1d:number(f[32]),sourceUrl:'https://qt.gtimg.cn/q='+symbol,provider:'腾讯财经',method:'腾讯财经最新可得快照，可能延迟；美股按纽约时间转换，港股/A股按北京时间转换。成交量与资金流不等同。'};
 }
 export function parseOKX(d,asset,at=new Date().toISOString()){
  const instId=asset.code.split('.')[0]+'-USDT',x=d?.data?.[0];if(d?.code!=='0'||x?.instId!==instId||x.instType!=='SPOT')throw Error('OKX现货行情标的不匹配或接口错误');
