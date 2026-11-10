@@ -5,6 +5,15 @@ import { mkdtempSync,rmSync,statSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { createDailyResearch,DEFAULT_ASSETS,technicals,dueToday } from '../daily-research.mjs';
+test('读取旧晨报补算交易日涨跌幅，不改写历史快照或调用供应商',()=>{
+ const dir=mkdtempSync(join(tmpdir(),'zhigu-display-')),db=new DatabaseSync(join(dir,'test.sqlite'));let engine;
+ try{engine=createDailyResearch(db,dir,{fetcher:()=>{throw Error('不得重新请求供应商');}});
+ const raw=JSON.stringify({reportPeriod:{priceBasis:'previous-close'},assets:[{asset:{code:'9988.HK',kind:'stock'},quote:{price:104.6,asOf:'2026-11-09',change1d:null,method:'历史收盘'},rows:[{date:'2026-11-06',close:104.9,priceBasis:'forward-adjusted'},{date:'2026-11-09',close:104.6,priceBasis:'forward-adjusted'}]}]});
+ db.prepare('INSERT INTO research_runs(id,started,finished,status,payload) VALUES(?,?,?,?,?)').run('old',new Date().toISOString(),new Date().toISOString(),'partial',raw);
+ assert.ok(engine.getRun('old').payload.assets[0].quote.change1d<0);assert.equal(engine.summary().latest.payload.assets[0].quote.changeComparison.date,'2026-11-06');
+ assert.equal(db.prepare('SELECT payload FROM research_runs WHERE id=?').get('old').payload,raw);
+ }finally{engine?.stop();db.close();rmSync(dir,{recursive:true,force:true});}
+});
 test('多市场默认清单、复权收益计算和北京时间运行边界',()=>{
  assert.equal(DEFAULT_ASSETS.length,12);assert.equal(DEFAULT_ASSETS.find(x=>x.name==='SpaceX'),undefined);assert.equal(DEFAULT_ASSETS.find(x=>x.name==='小马智行').code,'PONY.US');assert.equal(DEFAULT_ASSETS.find(x=>x.name==='阿里巴巴').market,'港股');
  const t=technicals([{date:'2026-10-30',close:100,adjusted_close:50},{date:'2026-11-02',close:51,adjusted_close:51}]);assert.equal(t.change1d,2.0000000000000018);assert.equal(t.sma20,null);assert.equal(t.volatility30d,null);assert.equal(technicals([]),null);
