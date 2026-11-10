@@ -1,4 +1,5 @@
 import http from 'node:http';
+import { personalFiles } from './personal-site/routes.mjs';
 import { createDailyResearch } from './daily-research.mjs';
 import { DatabaseSync } from 'node:sqlite';
 import { randomBytes, createHash, scryptSync, timingSafeEqual } from 'node:crypto';
@@ -75,7 +76,7 @@ async function handler(req,res){
   return send(res,404,{error:'接口不存在'});
  }
  if(!['GET','HEAD'].includes(req.method))return send(res,405,{error:'不支持的请求方法'});
- const files={'/':['index.html','text/html; charset=utf-8'],'/app.js':['app.js','text/javascript; charset=utf-8'],'/daily.js':['daily.js','text/javascript; charset=utf-8'],'/style.css':['style.css','text/css; charset=utf-8'],'/favicon.svg':['favicon.svg','image/svg+xml']};
+ const files={...personalFiles,'/zhigu':['index.html','text/html; charset=utf-8'],'/zhigu/':['index.html','text/html; charset=utf-8'],'/app.js':['app.js','text/javascript; charset=utf-8'],'/daily.js':['daily.js','text/javascript; charset=utf-8'],'/style.css':['style.css','text/css; charset=utf-8'],'/favicon.svg':['favicon.svg','image/svg+xml']};
  const file=files[path];if(!file)return send(res,404,{error:'页面不存在'});res.writeHead(200,{...secureHeaders,'Cache-Control':'no-cache','Content-Type':file[1]});res.end(req.method==='HEAD'?undefined:readFileSync(join(root,'public',file[0])));
 }
 export const server=http.createServer((req,res)=>{handler(req,res).catch(e=>{if(!res.headersSent)send(res,400,{error:['数据格式无效','自选股格式无效或重复','研究记录格式无效或重复','请求过大','版本无效','请填写有效来源网址','请检查资料内容、日期和股票代码','股票代码无效','连接参数无效','定时设置无效','请至少间隔一分钟再运行，避免重复消耗接口额度'].includes(e.message)?e.message:'请求无效，请检查内容后重试'});else res.end();});});
