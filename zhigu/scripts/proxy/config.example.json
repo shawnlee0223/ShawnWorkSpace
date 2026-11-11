@@ -1,0 +1,14 @@
+{
+  "mixed-port": 17890,
+  "allow-lan": false,
+  "bind-address": "127.0.0.1",
+  "mode": "rule",
+  "log-level": "warning",
+  "proxies": [],
+  "proxy-groups": [{"name": "RESEARCH", "type": "select", "proxies": ["REJECT"]}],
+  "rules": [
+    "DOMAIN,api.search.brave.com,RESEARCH",
+    "DOMAIN,www.okx.com,RESEARCH",
+    "MATCH,DIRECT"
+  ]
+}

@@ -1,0 +1,9 @@
+.DS_Store
+*.pem
+*.key
+*ed25519*
+.env
+.env.*
+!.env.example
+private/
+node_modules/
