@@ -1,0 +1,52 @@
+name: zhigu-secrets
+services:
+  backend:
+    image: infisical/infisical:v0.167.8
+    restart: unless-stopped
+    env_file: /etc/zhigu-infisical/instance.env
+    environment:
+      NODE_ENV: production
+      SITE_URL: http://127.0.0.1:3090
+      TELEMETRY_ENABLED: 'false'
+      OTEL_TELEMETRY_COLLECTION_ENABLED: 'false'
+    ports:
+      - '127.0.0.1:8090:8080'
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    mem_limit: 1800m
+    cpus: 1.5
+    security_opt: [no-new-privileges:true]
+    logging: &logging
+      driver: json-file
+      options: {max-size: '10m', max-file: '3'}
+  db:
+    image: postgres:14.20-alpine
+    restart: unless-stopped
+    env_file: /etc/zhigu-infisical/database.env
+    volumes:
+      - pg_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ['CMD-SHELL', 'pg_isready -U infisical -d infisical']
+      interval: 5s
+      timeout: 5s
+      retries: 30
+    mem_limit: 384m
+    security_opt: [no-new-privileges:true]
+    logging: *logging
+  redis:
+    image: redis:7.4.7-alpine
+    restart: unless-stopped
+    command: ['redis-server', '--save', '', '--appendonly', 'no', '--maxmemory', '80mb', '--maxmemory-policy', 'noeviction']
+    healthcheck:
+      test: ['CMD', 'redis-cli', 'ping']
+      interval: 5s
+      timeout: 5s
+      retries: 10
+    mem_limit: 128m
+    security_opt: [no-new-privileges:true]
+    logging: *logging
+volumes:
+  pg_data:

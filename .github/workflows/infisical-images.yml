@@ -1,0 +1,28 @@
+name: Prepare official Infisical images
+on:
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  images:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - name: Download official images and record registry digests
+        run: |
+          set -euo pipefail
+          mkdir bundle
+          for image in infisical/infisical:v0.167.8 postgres:14.20-alpine redis:7.4.7-alpine; do
+            docker pull --platform linux/amd64 "$image"
+            docker image inspect "$image" --format '{{json .RepoDigests}}' >> bundle/registry-digests.jsonl
+          done
+          docker save infisical/infisical:v0.167.8 postgres:14.20-alpine redis:7.4.7-alpine | gzip -1 > bundle/images.tar.gz
+          cd bundle
+          sha256sum images.tar.gz > SHA256SUMS
+      - uses: actions/upload-artifact@v4
+        with:
+          name: official-infisical-images-amd64
+          path: bundle/
+          retention-days: 3
+          compression-level: 0
