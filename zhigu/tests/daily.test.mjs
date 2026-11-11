@@ -1,7 +1,7 @@
 import {test} from 'node:test';
 import assert from 'node:assert/strict';
 import { DatabaseSync } from 'node:sqlite';
-import { mkdtempSync,rmSync,statSync } from 'node:fs';
+import { mkdtempSync,rmSync,statSync,writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { createDailyResearch,DEFAULT_ASSETS,technicals,dueToday } from '../daily-research.mjs';
@@ -38,4 +38,19 @@ test('同日观察清单变化只更新新标的，既有报告带来源复用�
   const started=engine.start();while(engine.summary().running)await new Promise(r=>setTimeout(r,10));const result=engine.getRun(started.id);
   assert.equal(result.payload.reuseRunId,'prior');assert.equal(result.payload.assets[0].reusedFromRunId,'prior');assert.equal(result.payload.assets[1].asset.code,'PONY.US');assert.equal(engine.getRun('prior').payload.assets.length,2);assert.equal(result.payload.assets.some(a=>a.asset.code==='SPCX.US'),false);
  }finally{engine?.stop();db.close();if(oldKey!==undefined)process.env.EODHD_API_KEY=oldKey;rmSync(dir,{recursive:true,force:true});}
+});
+
+test('Infisical托管配置可热更新，损坏缓存保持上次有效值，拒绝本地覆写',()=>{
+ const original=process.env.ZHIGU_CONNECTIONS_MANAGED;
+ const dir=mkdtempSync(join(tmpdir(),'zhigu-managed-')),db=new DatabaseSync(join(dir,'test.sqlite'));let engine;
+ try{
+  process.env.ZHIGU_CONNECTIONS_MANAGED='infisical';
+  const path=join(dir,'connections.json');writeFileSync(path,JSON.stringify({ARK_API_KEY:'sentinel-old',ARK_MODEL_ID:'model',BRAVE_API_KEY:'brave'}));
+  engine=createDailyResearch(db,dir);assert.equal(engine.connections().managed,true);
+  writeFileSync(path,JSON.stringify({ARK_API_KEY:'sentinel-new',ARK_MODEL_ID:'new-model',BRAVE_API_KEY:'new-brave'}));
+  assert.equal(engine.config().ARK_API_KEY,'sentinel-new');
+  writeFileSync(path,'{broken');assert.equal(engine.config().ARK_API_KEY,'sentinel-new');
+  assert.throws(()=>engine.saveConnections({ARK_API_KEY:'local-override'}),/Infisical/);
+  assert.ok(!JSON.stringify(engine.summary()).includes('sentinel-new'));
+ }finally{engine?.stop();db.close();rmSync(dir,{recursive:true,force:true});if(original===undefined)delete process.env.ZHIGU_CONNECTIONS_MANAGED;else process.env.ZHIGU_CONNECTIONS_MANAGED=original;}
 });

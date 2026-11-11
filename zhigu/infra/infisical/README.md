@@ -36,3 +36,13 @@ Infisical 发布流程也将相同镜像同步到 `public.ecr.aws/p5f0g7h8/infis
 - infisical/infisical:v0.167.8 — sha256:81d13df0ba27302848475cf02550d3e1e14b266447bd9d8918d1e8c8d8246ede
 - postgres:14.20-alpine — sha256:99b1da76e9e628f519f2aff2a2595128d7abb377ee1d7cc991ee45257efb05f0
 - redis:7.4.7-alpine — sha256:02f2cc4882f8bf87c79a220ac958f58c700bdec0dfb9b9ea61b62fb0e8f1bfcf
+
+## 知股配置同步
+
+`sync.mjs` 使用项目专用 Viewer 身份，仅调用 Universal Auth 登录和 v4 Secrets 读取接口。身份配置由服务器 `/etc/zhigu-infisical/reader.json`（root:root，600）提供，内容为本机 baseUrl、projectId、clientId、clientSecret。不能提交实际文件。短期 accessToken 为5分钟，只在同步进程内存中使用。
+
+Production 环境根目录保存 `ARK_API_KEY`、`ARK_MODEL_ID`、`BRAVE_API_KEY`、可选备用数据密钥及 `VPN_CONFIG_JSON`。后者是完整私有代理 JSON。`enable-sync.sh` 首次读取验证成功后启用5分钟同步 timer，并启用应用托管标识。网站不再允许本地覆盖密钥。
+
+应用仍从权限600的 connections.json 缓存读取，文件刷新后自动生效；平台不可用、字段缺失或校验失败时保留旧缓存。VPN 配置要求保持仅 Brave/OKX 代理、本机监听，先通过 Mihomo 验证后才替换；仅配置变化才重启代理。同步不运行模型、不恢复每日研究。
+
+同步身份只能读配置；管理用户在 Infisical 修改配置，约5分钟内生效。删除身份可撤销平台读取权限，但已同步到服务器的缓存仍可供网站运行；如需停止第三方服务调用，还需清除缓存或在供应商撤销凭据。

@@ -51,7 +51,7 @@ async function handler(req,res){
   if(path==='/api/daily'&&req.method==='GET')return send(res,200,daily.summary());
   if(path==='/api/daily/run'&&req.method==='POST')return send(res,202,daily.start());
   if(path==='/api/daily/settings'&&req.method==='PUT')return send(res,200,daily.saveSettings(await body(req,4000)));
-  if(path==='/api/connections'&&req.method==='PUT')return send(res,200,daily.saveConnections(await body(req,20000)));
+  if(path==='/api/connections'&&req.method==='PUT'){if(daily.connections().managed)return send(res,409,{error:'连接由 Infisical 管理，请在配置平台修改'});return send(res,200,daily.saveConnections(await body(req,20000)));}
   if(path.startsWith('/api/daily/run/')&&req.method==='GET'){const r=daily.getRun(path.split('/').at(-1));return r?send(res,200,r):send(res,404,{error:'任务不存在'});}
   if(path==='/api/logout'&&req.method==='POST'){const t=(req.headers.cookie||'').match(/zhigu=([a-f0-9]{64})/)?.[1];if(t)db.prepare('DELETE FROM sessions WHERE token=?').run(digest(t));return send(res,200,{ok:true},{'Set-Cookie':cookie('',0)});}
   if(path==='/api/state'&&req.method==='GET'){const row=db.prepare('SELECT * FROM notebook WHERE id=1').get();return send(res,200,{state:JSON.parse(row.payload),revision:row.revision,config:{model:daily.connections().model,market:daily.connections().globalMarket||daily.connections().legacyMarket,modelName:runtime.ARK_MODEL_ID||'待选择方舟模型'}});}

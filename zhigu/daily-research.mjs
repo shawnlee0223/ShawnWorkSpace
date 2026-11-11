@@ -31,14 +31,16 @@ export function dueToday(now,settings,lastDate){
 export function createDailyResearch(db,dataDir,{fetcher=fetch}={}){
  const connectionFile=join(dataDir,'connections.json');
  let secrets={};if(existsSync(connectionFile)){try{secrets=JSON.parse(readFileSync(connectionFile,'utf8'));}catch{throw Error('连接配置文件损坏，请恢复配置');}}
- const cfg=()=>({...process.env,...secrets});
+ const managed=process.env.ZHIGU_CONNECTIONS_MANAGED==='infisical';
+ const cfg=()=>{if(managed){try{const updated=JSON.parse(readFileSync(connectionFile,'utf8'));if(updated&&typeof updated==='object'&&!Array.isArray(updated)&&Object.values(updated).every(v=>typeof v==='string'))secrets=updated;}catch{/* Keep the last valid cache if an atomic refresh is unavailable. */}}return {...process.env,...secrets};};
  db.exec("CREATE TABLE IF NOT EXISTS research_settings(id INTEGER PRIMARY KEY CHECK(id=1),payload TEXT NOT NULL); CREATE TABLE IF NOT EXISTS research_runs(id TEXT PRIMARY KEY,started TEXT NOT NULL,finished TEXT,status TEXT NOT NULL,payload TEXT NOT NULL);");
  db.prepare('INSERT OR IGNORE INTO research_settings VALUES(1,?)').run(JSON.stringify({enabled:true,time:'08:30',mode:'provider',assets:DEFAULT_ASSETS}));
  db.prepare("UPDATE research_runs SET status='interrupted',finished=? WHERE status='running'").run(stamp());
  const settings=()=>JSON.parse(db.prepare('SELECT payload FROM research_settings WHERE id=1').get().payload);
  let running=false,lastRunAt=0;
- function connections(){const c=cfg();return {model:!!c.ARK_API_KEY&&!!c.ARK_MODEL_ID,modelName:c.ARK_MODEL_ID||'',brave:!!c.BRAVE_API_KEY,globalMarket:!!c.EODHD_API_KEY,crypto:!!c.COINGECKO_API_KEY,legacyMarket:!!c.TUSHARE_TOKEN};}
+ function connections(){const c=cfg();return {managed,model:!!c.ARK_API_KEY&&!!c.ARK_MODEL_ID,modelName:c.ARK_MODEL_ID||'',brave:!!c.BRAVE_API_KEY,globalMarket:!!c.EODHD_API_KEY,crypto:!!c.COINGECKO_API_KEY,legacyMarket:!!c.TUSHARE_TOKEN};}
  function saveConnections(b){
+  if(managed)throw Error('连接由 Infisical 管理，请在配置平台修改');
   for(const key of ['ARK_API_KEY','ARK_MODEL_ID','EODHD_API_KEY','COINGECKO_API_KEY','BRAVE_API_KEY']){
    if(b[key]!==undefined){if(typeof b[key]!=='string'||b[key].length>4096||/[\r\n\0]/.test(b[key]))throw Error('连接参数无效');if(b[key].trim())secrets[key]=b[key].trim();}
   }

@@ -8,3 +8,4 @@
 .market-group{margin:32px 0;scroll-margin-top:24px}.market-group-title{display:flex;align-items:center;gap:14px;font-size:22px;color:#254733;border-bottom:1px solid #dce2d7;padding-bottom:14px}.market-group-title span{font-size:12px;font-weight:400;color:#738070}.market-group .asset-grid{margin-top:18px}
 
 .market-nav{display:flex;gap:10px;flex-wrap:wrap;margin:24px 0 10px}.market-nav a{padding:9px 16px;border:1px solid #cfdbca;border-radius:999px;color:#254733;background:#eef3e9;font-size:13px;text-decoration:none}.market-nav a:hover{background:#dce9d4}
+.daily-connections fieldset {border:0;padding:0;margin:0;min-width:0}
