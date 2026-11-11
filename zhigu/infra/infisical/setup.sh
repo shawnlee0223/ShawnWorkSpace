@@ -16,6 +16,27 @@ if(!a){
  writeFileSync(dir+'instance.env',`ENCRYPTION_KEY=${randomBytes(16).toString('hex')}\nAUTH_SECRET=${randomBytes(32).toString('base64')}\nDB_CONNECTION_URI=postgres://infisical:${p}@db:5432/infisical\nREDIS_URL=redis://redis:6379\n`,{mode:0o600,flag:'wx'});
 }
 JS
+cat > /etc/systemd/system/zhigu-infisical-backup.service <<'UNIT'
+[Unit]
+Description=Back up private Infisical database and root keys
+After=docker.service
+Requires=docker.service
+[Service]
+Type=oneshot
+ExecStart=/opt/ShawnWorkSpace/zhigu/infra/infisical/backup.sh
+UMask=0077
+UNIT
+cat > /etc/systemd/system/zhigu-infisical-backup.timer <<'UNIT'
+[Unit]
+Description=Daily private Infisical backup
+[Timer]
+OnCalendar=*-*-* 03:50:00 Asia/Shanghai
+Persistent=true
+[Install]
+WantedBy=timers.target
+UNIT
+systemctl daemon-reload
+systemctl enable --now zhigu-infisical-backup.timer
 docker compose config --quiet
 docker compose up -d
 for attempt in $(seq 1 60); do

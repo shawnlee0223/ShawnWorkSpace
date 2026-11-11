@@ -58,7 +58,7 @@ tar -xf "$archive" -C /opt/ShawnWorkSpace
 systemctl start zhigu
 healthy=false
 for attempt in 1 2 3 4 5; do
-  if curl --fail --silent --max-time 5 http://127.0.0.1:3000/health | /usr/local/bin/node -e 'let s="";process.stdin.on("data",c=>s+=c);process.stdin.on("end",()=>{if(JSON.parse(s).ok!==true)process.exit(1)})'; then healthy=true; break; fi
+  if curl --fail --silent --max-time 5 http://127.0.0.1:3000/health | /usr/local/bin/node -e 'let s="";process.stdin.on("data",c=>s+=c);process.stdin.on("end",()=>{try{if(JSON.parse(s).ok!==true)process.exit(1)}catch{process.exit(1)}})'; then healthy=true; break; fi
   sleep 1
 done
 [[ "$healthy" == true ]]
