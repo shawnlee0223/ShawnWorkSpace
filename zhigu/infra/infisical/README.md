@@ -1,6 +1,6 @@
 # 私有 Infisical 社区版
 
-采用官方 Docker Compose 结构：Infisical + PostgreSQL + Redis。固定版本见 compose.yaml。社区开源功能无需软件许可订阅；企业功能未启用。
+采用官方 Docker Compose 结构：Infisical + PostgreSQL + Redis。固定版本及不可变摘要见 compose.yaml。社区开源功能无需软件许可订阅；企业功能未启用。
 
 ## 部署
 
@@ -26,3 +26,13 @@ backup.sh 生成私有 PostgreSQL dump 与根密钥备份，位于 /var/backups/
 恢复需停止 backend，在同版本空数据库通过 pg_restore 导入 database.dump，恢复匹配的 instance.env/database.env，再启动。必须同时备份数据库和 ENCRYPTION_KEY；丢失加密密钥无法恢复业务凭据。同机备份不能防服务器丢失，应额外保留离机副本。
 
 在完成管理员初始化、项目授权、真实凭据迁移和读取验证之前，知股仍使用原有配置。
+
+### 官方备用镜像渠道
+
+Infisical 发布流程也将相同镜像同步到 `public.ecr.aws/p5f0g7h8/infisical`（见官方仓库 `.github/workflows/release-standalone-docker-img-postgres-offical.yml`）。PostgreSQL/Redis 可从 Docker 官方认证的 `public.ecr.aws/docker/library/` 渠道取得，摘要与 Docker Hub 核对后使用。不是未知第三方镜像站。
+
+本次 Docker Hub 工作流核验摘要（run 42955444295）：
+
+- infisical/infisical:v0.167.8 — sha256:81d13df0ba27302848475cf02550d3e1e14b266447bd9d8918d1e8c8d8246ede
+- postgres:14.20-alpine — sha256:99b1da76e9e628f519f2aff2a2595128d7abb377ee1d7cc991ee45257efb05f0
+- redis:7.4.7-alpine — sha256:02f2cc4882f8bf87c79a220ac958f58c700bdec0dfb9b9ea61b62fb0e8f1bfcf

@@ -1,7 +1,7 @@
 name: zhigu-secrets
 services:
   backend:
-    image: infisical/infisical:v0.167.8
+    image: public.ecr.aws/p5f0g7h8/infisical:v0.167.8@sha256:81d13df0ba27302848475cf02550d3e1e14b266447bd9d8918d1e8c8d8246ede
     restart: unless-stopped
     env_file: /etc/zhigu-infisical/instance.env
     environment:
@@ -23,7 +23,7 @@ services:
       driver: json-file
       options: {max-size: '10m', max-file: '3'}
   db:
-    image: postgres:14.20-alpine
+    image: public.ecr.aws/docker/library/postgres:14.20-alpine@sha256:99b1da76e9e628f519f2aff2a2595128d7abb377ee1d7cc991ee45257efb05f0
     restart: unless-stopped
     env_file: /etc/zhigu-infisical/database.env
     volumes:
@@ -37,7 +37,7 @@ services:
     security_opt: [no-new-privileges:true]
     logging: *logging
   redis:
-    image: redis:7.4.7-alpine
+    image: public.ecr.aws/docker/library/redis:7.4.7-alpine@sha256:02f2cc4882f8bf87c79a220ac958f58c700bdec0dfb9b9ea61b62fb0e8f1bfcf
     restart: unless-stopped
     command: ['redis-server', '--save', '', '--appendonly', 'no', '--maxmemory', '80mb', '--maxmemory-policy', 'noeviction']
     healthcheck:
