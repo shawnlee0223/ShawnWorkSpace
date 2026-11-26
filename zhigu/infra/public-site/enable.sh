@@ -8,10 +8,15 @@ install -d -m 755 /etc/caddy /etc/systemd/system/zhigu.service.d
 backup=$(mktemp -d /var/backups/zhigu-public.XXXXXX)
 if [[ -f /etc/caddy/Caddyfile ]]; then cp -p /etc/caddy/Caddyfile "$backup/"; fi
 if [[ -f /etc/systemd/system/zhigu.service.d/public-origin.conf ]]; then cp -p /etc/systemd/system/zhigu.service.d/public-origin.conf "$backup/"; fi
+if [[ -f /etc/zhigu-public.env ]]; then cp -p /etc/zhigu-public.env "$backup/"; fi
 install -m 644 "$source_file" /etc/caddy/Caddyfile
+# EnvironmentFile values override Environment=, including an empty value in .env.
+# Load this file after the service's existing EnvironmentFile instead.
+printf '%s\n' 'PUBLIC_ORIGIN=https://shawnlee.top' > /etc/zhigu-public.env
+chmod 644 /etc/zhigu-public.env
 cat > /etc/systemd/system/zhigu.service.d/public-origin.conf <<'UNIT'
 [Service]
-Environment=PUBLIC_ORIGIN=https://shawnlee.top
+EnvironmentFile=/etc/zhigu-public.env
 UNIT
 systemctl daemon-reload
 systemctl restart zhigu
