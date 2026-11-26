@@ -1,0 +1,9 @@
+shawnlee.top {
+    encode zstd gzip
+    header Strict-Transport-Security "max-age=86400"
+    reverse_proxy 127.0.0.1:3000
+}
+
+www.shawnlee.top {
+    redir https://shawnlee.top{uri} permanent
+}
